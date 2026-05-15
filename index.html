@@ -59,6 +59,8 @@
   .filter-actions button:hover { background: #e5e5e5; }
   .filter-actions button:active { background: #d5d5d5; }
   .display-opt { display: block; padding: 2px 0 6px 0; cursor: pointer; user-select: none; }
+  .grade-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+  .grade-list label { padding: 1px 0; }
   .leaflet-tooltip.grade-label {
     font-size: 10px; padding: 0; line-height: 1.3;
     background: transparent; color: #000;
@@ -160,6 +162,31 @@ const colors = {
   b5:      '#8e44ad',
   unknown: '#95a5a6'
 };
+const BAND_GRADES = {
+  b1: ['3','3+','4','4+'],
+  b2: ['5','5+'],
+  b3: ['6A','6A+','6B','6B+'],
+  b4: ['6C','6C+','7A','7A+'],
+  b5: ['7B','7B+','7C','7C+','8A','8A+','8B','8B+','8C','8C+','9A'],
+  unknown: ['P']
+};
+const ALL_GRADES_ORDERED = [].concat(BAND_GRADES.b1, BAND_GRADES.b2, BAND_GRADES.b3, BAND_GRADES.b4, BAND_GRADES.b5, BAND_GRADES.unknown);
+function shadeColor(hex, percent) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  const a = c => percent > 0 ? Math.round(c + (255 - c) * percent) : Math.round(c * (1 + percent));
+  const nr = a(r), ng = a(g), nb = a(b);
+  return '#' + ((1<<24) + (nr<<16) + (ng<<8) + nb).toString(16).slice(1);
+}
+function gradeColor(g) {
+  const band = gradeBand(g);
+  if (!band || band === 'unknown') return colors.unknown;
+  const list = BAND_GRADES[band];
+  const idx = list.indexOf(g);
+  if (idx < 0) return colors[band];
+  const t = list.length === 1 ? 0.5 : idx / (list.length - 1);
+  const shade = 0.35 - 0.7 * t;
+  return shadeColor(colors[band], shade);
+}
 const bandLabel = {
   b1: '3 to 4+',
   b2: '5 to 5+',
@@ -195,6 +222,7 @@ function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':
 const markerLayer = L.layerGroup().addTo(map);
 const markers = [];
 const counts = { b1:0, b2:0, b3:0, b4:0, b5:0, unknown:0 };
+const gradeCounts = {};
 const auxCounts = {};
 for (const cat of auxCats) auxCounts[cat.key] = {};
 for (const b of BOULDERS) {
@@ -205,15 +233,17 @@ for (const b of BOULDERS) {
   if (b2) bands.add(b2);
   if (bands.size === 0) bands.add('unknown');
   for (const x of bands) counts[x]++;
+  if (b.g1) gradeCounts[b.g1] = (gradeCounts[b.g1] || 0) + 1;
+  if (b.g2 && b.g2 !== b.g1) gradeCounts[b.g2] = (gradeCounts[b.g2] || 0) + 1;
   for (const cat of auxCats) {
     const v = b[cat.key] || 'unknown';
     auxCounts[cat.key][v] = (auxCounts[cat.key][v] || 0) + 1;
   }
-  const colorBand = b1 || (b2 || 'unknown');
+  const col = gradeColor(b.g1) || colors.unknown;
   const m = L.circleMarker([b.lat, b.lng], {
     radius: 5,
-    color: colors[colorBand],
-    fillColor: colors[colorBand],
+    color: col,
+    fillColor: col,
     fillOpacity: 0.85,
     weight: 1
   });
@@ -234,13 +264,15 @@ for (const b of BOULDERS) {
 }
 
 const sel = {
-  band: { b1:true, b2:true, b3:true, b4:true, b5:true, unknown:true }
+  band: { b1:true, b2:true, b3:true, b4:true, b5:true, unknown:true },
+  gi: new Set(Object.keys(gradeCounts))
 };
 for (const cat of auxCats) {
   sel[cat.key] = new Set();
   for (const [slug] of cat.opts) sel[cat.key].add(slug);
 }
 let searchTerm = '';
+let useIndividualGrades = false;
 
 function passesAux(val, set) {
   return set.has(val || 'unknown');
@@ -249,9 +281,14 @@ function passesAux(val, set) {
 function markerVisible(m) {
   const b = m._b;
   if (b.co && b.co !== currentCountry) return false;
-  let anyBand = false;
-  for (const k of m._bands) { if (sel.band[k]) { anyBand = true; break; } }
-  if (!anyBand) return false;
+  if (useIndividualGrades) {
+    const ok = (b.g1 && sel.gi.has(b.g1)) || (b.g2 && sel.gi.has(b.g2));
+    if (!ok) return false;
+  } else {
+    let anyBand = false;
+    for (const k of m._bands) { if (sel.band[k]) { anyBand = true; break; } }
+    if (!anyBand) return false;
+  }
   for (const cat of auxCats) {
     if (!passesAux(b[cat.key], sel[cat.key])) return false;
   }
@@ -316,11 +353,21 @@ ctrl.onAdd = () => {
     '</div>' +
     '<label class="display-opt"><input type="checkbox" id="toggle-labels" checked> Vis grader p&aring; kart</label>' +
     '<details open><summary>Grad</summary>' +
-    bandOrder.map(k =>
-      '<label><input type="checkbox" data-band="' + k + '" checked> ' +
-      '<span class="swatch" style="background:' + colors[k] + '"></span>' +
-      bandLabel[k] + ' <span class="count">(' + counts[k] + ')</span></label>'
-    ).join('') +
+    '<label class="display-opt"><input type="checkbox" id="toggle-individual-grades"> Vis individuelle grader</label>' +
+    '<div id="grade-bands">' +
+      bandOrder.map(k =>
+        '<label><input type="checkbox" data-band="' + k + '" checked> ' +
+        '<span class="swatch" style="background:' + colors[k] + '"></span>' +
+        bandLabel[k] + ' <span class="count">(' + counts[k] + ')</span></label>'
+      ).join('') +
+    '</div>' +
+    '<div id="grade-individuals" class="grade-list" style="display:none">' +
+      ALL_GRADES_ORDERED.filter(g => gradeCounts[g]).map(g =>
+        '<label><input type="checkbox" data-grade="' + g + '" checked> ' +
+        '<span class="swatch" style="background:' + gradeColor(g) + '"></span>' +
+        g + ' <span class="count">(' + gradeCounts[g] + ')</span></label>'
+      ).join('') +
+    '</div>' +
     '</details>';
   for (const cat of auxCats) {
     const visible = cat.opts.filter(([slug]) => (auxCounts[cat.key][slug] || 0) > 0);
@@ -415,12 +462,34 @@ document.querySelectorAll('[data-band]').forEach(cb => {
   });
 });
 
+document.querySelectorAll('[data-grade]').forEach(cb => {
+  cb.addEventListener('change', () => {
+    const g = cb.dataset.grade;
+    if (cb.checked) sel.gi.add(g); else sel.gi.delete(g);
+    refresh();
+    renderResults();
+  });
+});
+
+document.getElementById('toggle-individual-grades').addEventListener('change', (e) => {
+  useIndividualGrades = e.target.checked;
+  document.getElementById('grade-bands').style.display = useIndividualGrades ? 'none' : '';
+  document.getElementById('grade-individuals').style.display = useIndividualGrades ? '' : 'none';
+  refresh();
+  renderResults();
+});
+
 function setAllFilters(checked) {
   for (const k of bandOrder) sel.band[k] = checked;
   for (const cat of auxCats) {
     sel[cat.key] = checked ? new Set(cat.opts.map(o => o[0])) : new Set();
   }
-  document.querySelectorAll('.panel input[type=checkbox]').forEach(cb => { cb.checked = checked; });
+  sel.gi = checked ? new Set(Object.keys(gradeCounts)) : new Set();
+  document.querySelectorAll('.panel input[type=checkbox]').forEach(cb => {
+    if (cb.id !== 'toggle-individual-grades' && cb.id !== 'toggle-labels') {
+      cb.checked = checked;
+    }
+  });
   refresh();
   renderResults();
 }
