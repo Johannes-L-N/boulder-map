@@ -121,12 +121,19 @@ const osm = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{
   subdomains: 'abcd',
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>'
 });
+const opentopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+  maxZoom: 17,
+  subdomains: 'abc',
+  attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, SRTM &middot; Map style: &copy; <a href="https://opentopomap.org/" target="_blank" rel="noopener">OpenTopoMap</a> (CC-BY-SA)'
+});
 kartverket.addTo(map);
 L.control.layers({
   'Kartverket topo': kartverket,
+  'OpenTopoMap': opentopo,
   'Satellite': satellite,
   'OpenStreetMap': osm
 }, null, { position: 'topleft', collapsed: true }).addTo(map);
+const COUNTRY_DEFAULT_BASEMAP = { 'Norge': kartverket, 'Sverige': opentopo };
 
 function gradeBand(g) {
   if (!g) return null;
@@ -428,12 +435,17 @@ function applyCountryVisibility() {
 applyCountryVisibility();
 document.querySelectorAll('input[name="country"]').forEach(radio => {
   radio.addEventListener('change', () => {
-    if (radio.checked) {
-      currentCountry = radio.value;
-      applyCountryVisibility();
-      refresh();
-      renderResults();
+    if (!radio.checked) return;
+    const oldDefault = COUNTRY_DEFAULT_BASEMAP[currentCountry];
+    currentCountry = radio.value;
+    const newDefault = COUNTRY_DEFAULT_BASEMAP[currentCountry];
+    if (oldDefault && newDefault && oldDefault !== newDefault && map.hasLayer(oldDefault)) {
+      map.removeLayer(oldDefault);
+      newDefault.addTo(map);
     }
+    applyCountryVisibility();
+    refresh();
+    renderResults();
   });
 });
 
