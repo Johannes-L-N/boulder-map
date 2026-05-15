@@ -43,13 +43,21 @@
   .panel h4:first-of-type { border-top: none; padding-top: 0; }
   .leaflet-popup-content { font: 13px/1.4 system-ui, sans-serif; }
   .marker-hidden { display: none; }
+  .leaflet-control-layers { background: #fff !important; border: 1px solid rgba(0,0,0,.2); }
+  .leaflet-control-layers-toggle {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23333' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polygon points='12 2 2 7 12 12 22 7 12 2'/><polyline points='2 17 12 22 22 17'/><polyline points='2 12 12 17 22 12'/></svg>") !important;
+    background-size: 22px 22px !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+  }
   .leaflet-control-layers-expanded { max-width: calc(100vw - 70px); box-sizing: border-box; }
   .leaflet-control-layers-expanded label { white-space: normal; }
-  .locate-control button { background: white; border: none; padding: 0;
+  .locate-control { background: #fff !important; border: 1px solid rgba(0,0,0,.2) !important; }
+  .locate-control button { background: #fff; border: none; padding: 0;
     width: 34px; height: 34px; cursor: pointer;
     display: flex; align-items: center; justify-content: center; color: #333;
     -webkit-tap-highlight-color: rgba(33,150,243,.3); touch-action: manipulation; }
-  .locate-control button svg { pointer-events: none; }
+  .locate-control button svg { pointer-events: none; display: block; }
   .locate-control button.active { color: #2196F3; }
   .locate-control button:hover { background: #f4f4f4; }
   .locate-control button:active { background: #ddd; }
