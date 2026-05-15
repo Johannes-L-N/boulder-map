@@ -277,10 +277,10 @@ for (const b of BOULDERS) {
   const col = gradeColor(b.g1) || colors.unknown;
   const m = L.circleMarker([b.lat, b.lng], {
     radius: 5,
-    color: col,
+    color: '#000',
     fillColor: col,
     fillOpacity: 0.85,
-    weight: 1
+    weight: 0.75
   });
   const popup =
     '<b>' + escapeHtml(b.n) + '</b><br>' +
