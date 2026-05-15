@@ -373,6 +373,16 @@ function updateLabels() {
 }
 map.on('zoomend moveend', updateLabels);
 
+const LARGE_MARKER_ZOOM = 15;
+function updateMarkerSizes() {
+  const r = map.getZoom() >= LARGE_MARKER_ZOOM ? 5.5 : 5;
+  for (const m of markers) {
+    if (m.options.radius !== r) m.setRadius(r);
+  }
+}
+map.on('zoomend', updateMarkerSizes);
+updateMarkerSizes();
+
 let lastTapTime = 0;
 let lastTapPoint = null;
 const DBL_TAP_MS = 300;
