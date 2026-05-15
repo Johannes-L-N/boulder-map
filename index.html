@@ -43,6 +43,8 @@
   .panel h4:first-of-type { border-top: none; padding-top: 0; }
   .leaflet-popup-content { font: 13px/1.4 system-ui, sans-serif; }
   .marker-hidden { display: none; }
+  .leaflet-control-layers-expanded { max-width: calc(100vw - 70px); box-sizing: border-box; }
+  .leaflet-control-layers-expanded label { white-space: normal; }
   .locate-control button { background: white; border: none; padding: 0;
     width: 34px; height: 34px; cursor: pointer;
     display: flex; align-items: center; justify-content: center; color: #333;
@@ -90,7 +92,7 @@ L.control.layers({
   'Kartverket topo': kartverket,
   'Satellite': satellite,
   'OpenStreetMap': osm
-}, null, { position: 'topleft', collapsed: false }).addTo(map);
+}, null, { position: 'topleft', collapsed: true }).addTo(map);
 
 function gradeBand(g) {
   if (!g) return null;
