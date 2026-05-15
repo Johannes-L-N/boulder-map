@@ -470,6 +470,12 @@ toggleBtn.addEventListener('click', () => {
   toggleBtn.setAttribute('aria-expanded', String(!collapsed));
 });
 
+map.on('click', () => {
+  if (!panelEl.classList.contains('collapsed')) {
+    toggleBtn.click();
+  }
+});
+
 const MAX_RESULTS = 50;
 const resultsDiv = document.getElementById('results');
 
