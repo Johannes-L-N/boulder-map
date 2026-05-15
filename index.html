@@ -163,7 +163,8 @@ for (const b of BOULDERS) {
     (b.g2 ? 'Grade2: ' + escapeHtml(b.g2) + '<br>' : '') +
     (b.c ? 'Crag: ' + escapeHtml(b.c) + '<br>' : '') +
     (b.fa ? 'FA: ' + escapeHtml(b.fa) + '<br>' : '') +
-    '<a href="' + b.u + '" target="_blank" rel="noopener">Open in gryttr</a>';
+    '<a href="' + b.u + '" target="_blank" rel="noopener">Open in gryttr</a><br>' +
+    '<a href="https://www.google.com/maps/search/?api=1&query=' + b.lat + ',' + b.lng + '" target="_blank" rel="noopener">Find in Google Maps</a>';
   m.bindPopup(popup);
   m._bands = bands;
   m._name = b.n.toLowerCase();
