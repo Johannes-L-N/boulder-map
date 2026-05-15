@@ -45,9 +45,18 @@
   .marker-hidden { display: none; }
   .locate-control button { background: white; border: none; padding: 0;
     width: 34px; height: 34px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; color: #333; }
+    display: flex; align-items: center; justify-content: center; color: #333;
+    -webkit-tap-highlight-color: rgba(33,150,243,.3); touch-action: manipulation; }
+  .locate-control button svg { pointer-events: none; }
   .locate-control button.active { color: #2196F3; }
   .locate-control button:hover { background: #f4f4f4; }
+  .locate-control button:active { background: #ddd; }
+  #toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,.85); color: white; padding: 10px 16px;
+    border-radius: 4px; font: 13px/1.4 system-ui, sans-serif;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3); z-index: 10000; max-width: 90vw;
+    pointer-events: none; opacity: 0; transition: opacity .2s; }
+  #toast.show { opacity: 1; }
 </style>
 </head>
 <body>
@@ -77,7 +86,7 @@ L.control.layers({
   'Kartverket topo': kartverket,
   'Satellite': satellite,
   'OpenStreetMap': osm
-}, null, { position: 'topleft', collapsed: false }).addTo(map);
+}, null, { position: 'topleft', collapsed: true }).addTo(map);
 
 function gradeBand(g) {
   if (!g) return null;
@@ -313,6 +322,19 @@ q.addEventListener('input', () => {
   }, 120);
 });
 
+function showToast(msg, ms) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), ms || 4000);
+}
+
 let userMarker = null;
 let userAccuracy = null;
 let watching = false;
@@ -339,14 +361,25 @@ map.on('locationfound', (e) => {
   if (locateBtn) locateBtn.classList.add('active');
 });
 map.on('locationerror', (e) => {
-  console.warn('Geolocation error:', e.message);
+  console.warn('Geolocation error:', e.code, e.message);
   if (locateBtn) locateBtn.classList.remove('active');
+  let msg = 'Could not get your location';
+  if (e.code === 1) msg = 'Location access denied. Enable it in your browser/OS settings.';
+  else if (e.code === 2) msg = 'Location unavailable (no GPS signal?)';
+  else if (e.code === 3) msg = 'Location request timed out';
+  else if (e.message) msg = e.message;
+  showToast(msg, 6000);
 });
 
 function locateMe() {
+  if (!('geolocation' in navigator)) {
+    showToast('Geolocation not supported by this browser', 5000);
+    return;
+  }
   if (!watching) {
     watching = true;
-    map.locate({ watch: true, enableHighAccuracy: true });
+    map.locate({ watch: true, enableHighAccuracy: true, timeout: 15000 });
+    showToast('Locating...', 2500);
   }
   if (userMarker) {
     map.setView(userMarker.getLatLng(), Math.max(map.getZoom(), 16));
@@ -366,7 +399,12 @@ locateCtrl.onAdd = () => {
     '</svg></button>';
   locateBtn = c.querySelector('button');
   L.DomEvent.disableClickPropagation(c);
-  locateBtn.addEventListener('click', locateMe);
+  L.DomEvent.disableScrollPropagation(c);
+  L.DomEvent.on(locateBtn, 'click', (ev) => {
+    L.DomEvent.preventDefault(ev);
+    L.DomEvent.stopPropagation(ev);
+    locateMe();
+  });
   return c;
 };
 locateCtrl.addTo(map);
