@@ -259,7 +259,6 @@ const auxCats = [
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 const markerLayer = L.layerGroup().addTo(map);
-const starLayer = L.layerGroup().addTo(map);
 const starIcon = L.divIcon({
   className: 'boulder-star-icon',
   html: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
@@ -289,13 +288,19 @@ for (const b of BOULDERS) {
     auxCounts[cat.key][v] = (auxCounts[cat.key][v] || 0) + 1;
   }
   const col = gradeColor(b.g1) || colors.unknown;
-  const m = L.circleMarker([b.lat, b.lng], {
-    radius: 5,
-    color: '#000',
-    fillColor: col,
-    fillOpacity: 0.85,
-    weight: 0.75
-  });
+  let m;
+  if (b.st) {
+    starCount++;
+    m = L.marker([b.lat, b.lng], { icon: starIcon, keyboard: false });
+  } else {
+    m = L.circleMarker([b.lat, b.lng], {
+      radius: 5,
+      color: '#000',
+      fillColor: col,
+      fillOpacity: 0.85,
+      weight: 0.75
+    });
+  }
   const popup =
     '<b>' + escapeHtml(b.n) + '</b><br>' +
     (b.g1 ? 'Grade1: ' + escapeHtml(b.g1) + '<br>' : '') +
@@ -310,12 +315,6 @@ for (const b of BOULDERS) {
   m._b = b;
   markers.push(m);
   markerLayer.addLayer(m);
-  if (b.st) {
-    starCount++;
-    const sm = L.marker([b.lat, b.lng], { icon: starIcon, interactive: false, keyboard: false });
-    starLayer.addLayer(sm);
-    m._starMarker = sm;
-  }
 }
 
 const sel = {
@@ -353,13 +352,11 @@ function markerVisible(m) {
   return true;
 }
 
+function markerEl(m) { return m._path || m._icon; }
 function refresh() {
   for (const m of markers) {
-    const visible = markerVisible(m);
-    if (m._path) m._path.style.display = visible ? '' : 'none';
-    if (m._starMarker && m._starMarker._icon) {
-      m._starMarker._icon.style.display = visible ? '' : 'none';
-    }
+    const el = markerEl(m);
+    if (el) el.style.display = markerVisible(m) ? '' : 'none';
   }
   updateLabels();
 }
@@ -382,7 +379,8 @@ function updateLabels() {
   }
   const bounds = map.getBounds();
   for (const m of markers) {
-    const visible = m._path && m._path.style.display !== 'none';
+    const el = markerEl(m);
+    const visible = el && el.style.display !== 'none';
     const inBounds = bounds.contains(m.getLatLng());
     const shouldHave = visible && inBounds;
     const has = !!m.getTooltip();
@@ -403,7 +401,7 @@ const LARGE_MARKER_ZOOM = 16;
 function updateMarkerSizes() {
   const r = map.getZoom() >= LARGE_MARKER_ZOOM ? 5.3 : 5;
   for (const m of markers) {
-    if (m.options.radius !== r) m.setRadius(r);
+    if (typeof m.setRadius === 'function' && m.options.radius !== r) m.setRadius(r);
   }
 }
 map.on('zoomend', updateMarkerSizes);
@@ -451,7 +449,6 @@ ctrl.onAdd = () => {
     '</div>' +
     '<label class="display-opt"><input type="checkbox" id="toggle-labels" checked> Vis grader p&aring; kart</label>' +
     '<details open><summary>' + sectionHead('Grad', 'grad') + '</summary>' +
-    '<label class="display-opt"><input type="checkbox" id="star-only"> &#9733; Stjerneboulder <span class="count">(' + starCount + ')</span></label>' +
     '<label class="display-opt"><input type="checkbox" id="toggle-individual-grades"> Vis individuelle grader</label>' +
     '<div id="grade-bands">' +
       bandOrder.map(k =>
@@ -467,6 +464,7 @@ ctrl.onAdd = () => {
         g + ' <span class="count">(' + gradeCounts[g] + ')</span></label>'
       ).join('') +
     '</div>' +
+    '<label class="display-opt"><input type="checkbox" id="star-only"> &#9733; Stjernebuldre <span class="count">(' + starCount + ')</span></label>' +
     '</details>';
   for (const cat of auxCats) {
     const visible = cat.opts.filter(([slug]) => (auxCounts[cat.key][slug] || 0) > 0);
