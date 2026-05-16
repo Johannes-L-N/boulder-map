@@ -464,7 +464,7 @@ ctrl.onAdd = () => {
         g + ' <span class="count">(' + gradeCounts[g] + ')</span></label>'
       ).join('') +
     '</div>' +
-    '<label class="display-opt"><input type="checkbox" id="star-only"> &#9733; Stjernebuldre <span class="count">(' + starCount + ')</span></label>' +
+    '<label class="display-opt"><input type="checkbox" id="star-only"> &#9733; Stjernebuldere <span class="count">(' + starCount + ')</span></label>' +
     '</details>';
   for (const cat of auxCats) {
     const visible = cat.opts.filter(([slug]) => (auxCounts[cat.key][slug] || 0) > 0);
