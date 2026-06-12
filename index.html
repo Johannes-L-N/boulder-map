@@ -241,6 +241,7 @@ const bandLabel = {
 const REGIONS = ["Valdres","Hallingdal","Stange","Buskerud","Oslo og omegn","Follo","Østfold","Drammen / Asker","Vestfold","Telemark","Bohuslän","Södra Bohuslän","Bergen","Fredrikstad","Haugalandet","Jotunheimen","Møre","Narvik","Rogaland","Sørlandet","Troms","Trøndelag"];
 const REGION_COUNTRY = {"Valdres":"Norge","Jotunheimen":"Norge","Oslo og omegn":"Norge","Hallingdal":"Norge","Telemark":"Norge","Follo":"Norge","Troms":"Norge","Narvik":"Norge","Bergen":"Norge","Södra Bohuslän":"Sverige","Vestfold":"Norge","Sørlandet":"Norge","Østfold":"Norge","Drammen / Asker":"Norge","Stange":"Norge","Trøndelag":"Norge","Rogaland":"Norge","Fredrikstad":"Norge","Buskerud":"Norge","Bohuslän":"Sverige","Haugalandet":"Norge","Møre":"Norge"};
 const REGION_SOURCE = {"Valdres":"Gryttr","Hallingdal":"Gryttr","Stange":"Gryttr","Buskerud":"Gryttr","Oslo og omegn":"Gryttr","Follo":"Gryttr","Østfold":"Gryttr","Drammen / Asker":"Gryttr","Vestfold":"Gryttr","Telemark":"Gryttr","Bohuslän":"Gryttr","Södra Bohuslän":"Gryttr","Bergen":"Buldreinfo","Fredrikstad":"Buldreinfo","Haugalandet":"Buldreinfo","Jotunheimen":"Buldreinfo","Møre":"Buldreinfo","Narvik":"Buldreinfo","Rogaland":"Buldreinfo","Sørlandet":"Buldreinfo","Troms":"Buldreinfo","Trøndelag":"Buldreinfo"};
+const AREA_PDFS = {"Fl\u00f8": "https://www.klatreklubben.no/wp/wp-content/uploads/2015/11/floeA5_mai15.pdf"};
 let currentCountry = 'Norge';
 const auxCats = [
   {
@@ -319,6 +320,7 @@ for (const b of BOULDERS) {
     (b.ap ? '<i>omtrentlig plassering (' + escapeHtml(b.ap) + ')</i><br>' : '') +
     (b.fa ? 'FA: ' + escapeHtml(b.fa) + '<br>' : '') +
     '<a href="' + b.u + '" target="_blank" rel="noopener">' + _openLabel + '</a><br>' +
+    (AREA_PDFS[b.c] ? '<a href="' + AREA_PDFS[b.c] + '" target="_blank" rel="noopener">pdf med buldre-info av omr&aring;det</a><br>' : '') +
     '<a href="https://www.google.com/maps/search/?api=1&query=' + b.lat + ',' + b.lng + '" target="_blank" rel="noopener">Find in Google Maps</a>';
   m.bindPopup(popup);
   m._bands = bands;
