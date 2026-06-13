@@ -140,6 +140,7 @@
     pointer-events: none; }
   #toast.show { opacity: 1; pointer-events: auto; }
   #toast::after { content: ' Ã—'; opacity: .6; font-weight: bold; }
+  .leaflet-control-scale-line { font-size: 10px; line-height: 1.4; padding: 1px 6px; background: rgba(255,255,255,.6); border-color: #555; }
 </style>
 </head>
 <body>
@@ -185,6 +186,7 @@ L.control.layers({
   'Satellite': satellite,
   'OpenStreetMap': osm
 }, null, { position: 'topleft', collapsed: true }).addTo(map);
+L.control.scale({ position: 'bottomleft', maxWidth: 90, metric: true, imperial: false }).addTo(map);
 const COUNTRY_DEFAULT_BASEMAP = { 'Norge': kartverket, 'Sverige': opentopo };
 
 function gradeBand(g) {
