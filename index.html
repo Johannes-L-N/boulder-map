@@ -464,6 +464,58 @@ function updateMarkerSizes() {
 map.on('zoomend', updateMarkerSizes);
 updateMarkerSizes();
 
+// --- Finger-friendly tap targets -------------------------------------------
+// The drawn dot has a radius of only ~5 px (star icons ~6 px), which is a small
+// target for a fingertip. Rather than enlarging the dots -- that would clutter
+// dense crags -- a tap that lands on empty map snaps to the NEAREST visible
+// boulder within TAP_RADIUS_PX of its centre.
+//
+// Nearest-wins is the important part: a neighbouring dot can never steal a tap
+// that was aimed better at its own dot, so raising the value only widens how far
+// "empty map" still counts as a tap -- it never makes choosing between two
+// adjacent dots harder. It is in fact MORE precise than simply drawing a bigger
+// hitbox: two overlapping SVG circles otherwise hand the tap to whichever was
+// drawn last, which need not be the closest one.
+//
+// The two numbers are the total reach measured from the dot's centre, so ~18
+// roughly triples a fingertip's effective target without touching the visuals.
+const COARSE_POINTER = window.matchMedia
+  ? window.matchMedia('(pointer: coarse)').matches
+  : !!(L.Browser && L.Browser.touch);
+const TAP_RADIUS_PX = COARSE_POINTER ? 18 : 11;
+
+// Leaflet's closePopupOnClick runs on 'preclick', i.e. BEFORE our click handler,
+// so by the time we snap, the popup a tap just dismissed is already shut. Record
+// it so that same tap does not immediately re-open what it meant to close.
+let justClosedMarker = null;
+let justClosedAt = 0;
+map.on('popupclose', (e) => {
+  justClosedMarker = e.popup && e.popup._source;
+  justClosedAt = Date.now();
+});
+
+function nearestMarkerTo(pt, tolPx) {
+  // Cheap lat/lng window first (there are ~20k markers), project only survivors.
+  const c = map.containerPointToLatLng(pt);
+  const corner = map.containerPointToLatLng(L.point(pt.x + tolPx, pt.y + tolPx));
+  const dLat = Math.abs(corner.lat - c.lat);
+  const dLng = Math.abs(corner.lng - c.lng);
+  let best = null;
+  let bestD2 = tolPx * tolPx;
+  for (const m of markers) {
+    const ll = m.getLatLng();
+    if (Math.abs(ll.lat - c.lat) > dLat || Math.abs(ll.lng - c.lng) > dLng) continue;
+    const el = markerEl(m);
+    if (!el || el.style.display === 'none') continue;   // hidden by a filter
+    const p = map.latLngToContainerPoint(ll);
+    const dx = p.x - pt.x;
+    const dy = p.y - pt.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) { bestD2 = d2; best = m; }
+  }
+  return best;
+}
+
 let lastTapTime = 0;
 let lastTapPoint = null;
 const DBL_TAP_MS = 300;
@@ -474,6 +526,7 @@ map.on('click', (e) => {
     const dx = e.containerPoint.x - lastTapPoint.x;
     const dy = e.containerPoint.y - lastTapPoint.y;
     if (dx*dx + dy*dy < DBL_TAP_PX2) {
+      map.closePopup();   // tap 1 of the double-tap may have snapped one open
       map.setZoomAround(e.containerPoint, map.getZoom() + 1);
       lastTapTime = 0;
       lastTapPoint = null;
@@ -482,6 +535,17 @@ map.on('click', (e) => {
   }
   lastTapTime = now;
   lastTapPoint = e.containerPoint;
+
+  // A tap that actually landed on a marker (or inside a popup) is Leaflet's to
+  // handle -- circleMarker clicks bubble up to the map, so bail out rather than
+  // second-guess a hit that already worked.
+  const tgt = e.originalEvent && e.originalEvent.target;
+  if (tgt && tgt.closest && tgt.closest('.leaflet-interactive, .leaflet-popup')) return;
+
+  const near = nearestMarkerTo(e.containerPoint, TAP_RADIUS_PX);
+  if (!near) return;
+  if (near === justClosedMarker && now - justClosedAt < 60) return;  // this tap dismissed it
+  near.openPopup();
 });
 
 const filterIconSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>';
