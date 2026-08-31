@@ -526,7 +526,6 @@ map.on('click', (e) => {
     const dx = e.containerPoint.x - lastTapPoint.x;
     const dy = e.containerPoint.y - lastTapPoint.y;
     if (dx*dx + dy*dy < DBL_TAP_PX2) {
-      map.closePopup();   // tap 1 of the double-tap may have snapped one open
       map.setZoomAround(e.containerPoint, map.getZoom() + 1);
       lastTapTime = 0;
       lastTapPoint = null;
@@ -541,6 +540,10 @@ map.on('click', (e) => {
   // second-guess a hit that already worked.
   const tgt = e.originalEvent && e.originalEvent.target;
   if (tgt && tgt.closest && tgt.closest('.leaflet-interactive, .leaflet-popup')) return;
+
+  // While the filter panel is open this tap's job is to dismiss it (see the
+  // panel's own map click handler further down) -- don't also open a popup.
+  if (!panelEl.classList.contains('collapsed')) return;
 
   const near = nearestMarkerTo(e.containerPoint, TAP_RADIUS_PX);
   if (!near) return;
