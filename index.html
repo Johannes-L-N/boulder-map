@@ -419,35 +419,61 @@ function refresh() {
 }
 
 const LABEL_ZOOM = 15;
+// Label budget. A permanent Leaflet tooltip forces a synchronous page layout when it is created
+// and again on every zoom frame, and each one gets dearer as more exist (roughly quadratic), so
+// ~1,000 labels (Ostmarka at z15 on a phone) block the page for seconds. Labels are therefore
+// drawn only when at most LABEL_MAX_ON visible boulders are on screen: sparse crags keep them
+// from LABEL_ZOOM, dense crags get them a zoom level or two later. LABEL_MAX_OFF > LABEL_MAX_ON
+// is hysteresis so labels do not flicker while panning along the edge of a dense area.
+const LABEL_MAX_ON  = 200;   // show labels when this many (or fewer) visible boulders are in view
+const LABEL_MAX_OFF = 260;   // once showing, keep them until the count exceeds this
 let labelsEnabled = true;
+let labelsWithinBudget = false;
 
 function gradeLabelText(b) {
   if (b.g1 && b.g2 && b.g1 !== b.g2) return b.g1 + '/' + b.g2;
   return b.g1 || b.g2 || '';
 }
 
+function unbindAllLabels() {
+  for (const m of markers) {
+    if (m.getTooltip()) m.unbindTooltip();
+  }
+}
+
 function updateLabels() {
-  const shouldShow = labelsEnabled && map.getZoom() >= LABEL_ZOOM;
-  if (!shouldShow) {
-    for (const m of markers) {
-      if (m.getTooltip()) m.unbindTooltip();
-    }
+  if (!(labelsEnabled && map.getZoom() >= LABEL_ZOOM)) {
+    labelsWithinBudget = false;
+    unbindAllLabels();
     return;
   }
+  // Pass 1 (cheap, no DOM writes): which visible markers are on screen. Decide the budget first.
   const bounds = map.getBounds();
+  const onScreen = [];
   for (const m of markers) {
     const el = markerEl(m);
-    const visible = el && el.style.display !== 'none';
-    const inBounds = bounds.contains(m.getLatLng());
-    const shouldHave = visible && inBounds;
+    if (el && el.style.display !== 'none' && bounds.contains(m.getLatLng())) onScreen.push(m);
+  }
+  const limit = labelsWithinBudget ? LABEL_MAX_OFF : LABEL_MAX_ON;
+  if (onScreen.length > limit) {
+    labelsWithinBudget = false;
+    unbindAllLabels();
+    return;
+  }
+  labelsWithinBudget = true;
+  // Pass 2: bind labels that are missing, unbind those that left the screen.
+  const keep = new Set(onScreen);
+  for (const m of markers) {
     const has = !!m.getTooltip();
-    if (shouldHave && !has) {
-      const text = gradeLabelText(m._b);
-      if (text) {
-        m.bindTooltip(text, { permanent: true, direction: 'right',
-                              className: 'grade-label', offset: [6, 0] });
+    if (keep.has(m)) {
+      if (!has) {
+        const text = gradeLabelText(m._b);
+        if (text) {
+          m.bindTooltip(text, { permanent: true, direction: 'right',
+                                className: 'grade-label', offset: [6, 0] });
+        }
       }
-    } else if (!shouldHave && has) {
+    } else if (has) {
       m.unbindTooltip();
     }
   }
