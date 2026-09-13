@@ -87,7 +87,35 @@
     white-space: nowrap; pointer-events: none;
   }
   .leaflet-tooltip.grade-label::before { display: none; }
+  /* Boulder photo slot in Gryttr popups. Square, sized up front so the popup never jumps when the image
+     arrives. Width follows the screen: popup = slot + 46 px (Leaflet's content margins 20+24 and 1+1 wrapper
+     padding), so 100vw - 86px leaves a 20 px gap on each side of a phone (iPhone 16: 307 px slot, 353 px
+     popup = 90% of 393). Capped at 320 px for tablets/desktop. bindPopup maxWidth (340) must stay >= the cap. */
+  .popup-img { width: min(320px, calc(100vw - 86px)); aspect-ratio: 1 / 1; height: auto; max-width: 100%;
+               margin: 6px 0 8px; border-radius: 4px; background: #eceff1; overflow: hidden; position: relative; }
+  .popup-img::after { content: 'laster bilde...'; position: absolute; left: 0; right: 0; top: 50%;
+                      transform: translateY(-50%); text-align: center; color: #9aa; font-size: 11px; }
+  .popup-img.loaded::after { content: none; }
+  .popup-img a, .popup-img img { display: block; width: 100%; height: 100%; }
+  .popup-img img { object-fit: cover; }
+  /* Title indented 14 px: the popup's top-left corner sits under the map's zoom buttons (they end at x=42,
+     the text would start at x=41), so the first letters were hidden. */
+  .popup-title { display: block; padding-left: 14px; }
+  /* Gryttr's boulder description ("Sittstart. ...") under the photo - the rules of the problem. Plain text
+     (HTML from the API is flattened), paragraphs kept via pre-line. */
+  .popup-caption { margin: 0 0 8px; padding: 6px 8px; background: #f2f4f5; border-radius: 4px;
+                   white-space: pre-line; line-height: 1.35; }
+  .popup-caption b { display: inline; }
   .leaflet-popup-content { font: 13px/1.4 system-ui, sans-serif; }
+  /* Popup tip: a long thin line instead of Leaflet's 17 px triangle, so the tapped dot and the map stay
+     visible below the popup while it is still obvious which boulder it belongs to. The box sits
+     margin-bottom (40) - popup offset (7) = 33 px above the dot; the 28 px line ends at the dot's edge.
+     placePopup() reads the margin/offset, so changing these numbers needs no JS change. */
+  .leaflet-popup { margin-bottom: 40px; }
+  .leaflet-popup-tip-container { width: 4px; height: 28px; margin-left: -2px; margin-top: -1px; overflow: visible; }
+  .leaflet-popup-tip { width: 2px; height: 28px; margin: 0 1px; padding: 0; transform: none; border-radius: 1px;
+                       background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+  @media (max-height: 520px) { .popup-img { width: 130px; height: 130px; } }   /* landscape phones */
   .marker-hidden { display: none; }
   .leaflet-control-layers { background: #fff !important; border: 1px solid rgba(0,0,0,.2); }
   .leaflet-control-layers-toggle {
@@ -352,20 +380,7 @@ for (const b of BOULDERS) {
       weight: 0.75
     });
   }
-  const _openLabel = REGION_SOURCE[b.r] === 'Buldreinfo' ? 'Open in Buldreinfo' : 'Open in gryttr';
-  const popup =
-    '<b>' + escapeHtml(b.n) + '</b><br>' +
-    (b.g1 ? 'Grade1: ' + escapeHtml(b.g1) + '<br>' : '') +
-    (b.g2 ? 'Grade2: ' + escapeHtml(b.g2) + '<br>' : '') +
-    (b.c ? 'Crag: ' + escapeHtml(b.c) + '<br>' : '') +
-    (b.ap ? '<i>omtrentlig plassering (' + escapeHtml(b.ap) + ')</i><br>' : '') +
-    (b.fa ? 'FA: ' + escapeHtml(b.fa) + '<br>' : '') +
-    (b.tc ? 'Ticks: ' + b.tc + '<br>' : '') +
-    '<a href="' + b.u + '" target="_blank" rel="noopener">' + _openLabel + '</a><br>' +
-    (AREA_PDFS[b.c] ? '<a href="' + AREA_PDFS[b.c] + '" target="_blank" rel="noopener">pdf med buldre-info av omr&aring;det</a><br>' : '') +
-    '<a href="https://www.google.com/maps/search/?api=1&query=' + b.lat + ',' + b.lng + '" target="_blank" rel="noopener">Find in Google Maps</a><br>' +
-    '<a href="#" onclick="return shareBoulder(\'' + boulderKey(b) + '\')">Share</a>';
-  m.bindPopup(popup);
+  m.bindPopup(popupHtml, { maxWidth: 340, autoPan: false });   // content: popupHtml(); placement: placePopup()
   m._bands = bands;
   m._name = b.n.toLowerCase();
   m._b = b;
@@ -373,6 +388,156 @@ for (const b of BOULDERS) {
   boulderByKey[boulderKey(b)] = m;
   markers.push(m);
   markerLayer.addLayer(m);
+}
+
+// Popup content is built when the popup opens (it used to be prebuilt as one HTML string per marker, ~7.5 MB
+// of strings at startup). Gryttr boulders get an image slot that the popupopen handler below fills in;
+// Buldreinfo popups are exactly as before (buldreinfo has no reliable image per problem).
+function popupHtml(layer) {
+  const b = layer._b;
+  const isGryttr = REGION_SOURCE[b.r] !== 'Buldreinfo';
+  // Title "Name, grade" as on gryttr.com. The former Grade1/Grade2 lines are gone: the primary grade sits in
+  // the title and both grades label their description lines in the caption. 'P' = ungraded -> no suffix.
+  const g1 = (b.g1 && b.g1 !== 'P') ? b.g1 : null;
+  return '<b class="popup-title">' + escapeHtml(b.n + (g1 ? ', ' + g1 : '')) + '</b>' +
+    (isGryttr ? '<div class="popup-img"></div><div class="popup-caption" hidden></div>' : '') +
+    (b.c ? 'Crag: ' + escapeHtml(b.c) + '<br>' : '') +
+    (b.ap ? '<i>omtrentlig plassering (' + escapeHtml(b.ap) + ')</i><br>' : '') +
+    (b.fa ? 'FA: ' + escapeHtml(b.fa) + '<br>' : '') +
+    (b.tc ? 'Ticks: ' + b.tc + '<br>' : '') +
+    '<a href="' + b.u + '" target="_blank" rel="noopener">' + (isGryttr ? 'Open in gryttr' : 'Open in Buldreinfo') + '</a><br>' +
+    (AREA_PDFS[b.c] ? '<a href="' + AREA_PDFS[b.c] + '" target="_blank" rel="noopener">pdf med buldre-info av omr&aring;det</a><br>' : '') +
+    '<a href="https://www.google.com/maps/search/?api=1&query=' + b.lat + ',' + b.lng + '" target="_blank" rel="noopener">Find in Google Maps</a><br>' +
+    '<a href="#" onclick="return shareBoulder(\'' + boulderKey(b) + '\')">Share</a>';
+}
+
+// --- Boulder photo in the popup (Gryttr only) --------------------------------------------------
+// Gryttr's image CDN only serves SIGNED urls and every size needs its own signature, so embedding ~9k
+// image urls in the page would add ~0.4 MB to the download. Instead, when a Gryttr popup opens we ask
+// Gryttr's GraphQL API (the same public token gryttr.com's own site ships; CORS allows any origin) for a
+// 640x640 signed thumbnail of that one boulder and drop it into the slot. No image / API down / offline
+// -> the slot is removed and the popup looks exactly as before. ~2% of Gryttr boulders have no image.
+const GRYTTR_GQL = 'https://api.gryttr.com/gql';
+const GRYTTR_TOKEN = '1WoYXrx-6yuzzlZ2ZTRyqLTTlcdO2N69';
+const GRYTTR_IMG_QUERY = 'query($id:[QueryArgument]){ entries(section:"boulder", id:$id){ ... on boulder_Entry { description variantDescription grade { title } variantGrade { title } image { url @transform(width: 640, height: 640, mode: "crop") } } } }';
+const gryttrDetailCache = {};   // boulder id -> { url: signed url | null, desc: text, vdesc: text }
+
+// Gryttr descriptions are small HTML fragments ("<p>Sittstart. ...</p>"); flatten to plain text, one line
+// per paragraph, so nothing from the API is ever inserted as markup.
+function htmlToText(html) {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.body.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+  doc.body.querySelectorAll('p, div, li').forEach(el => el.append('\n'));
+  return doc.body.textContent.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function fetchGryttrDetails(id) {
+  if (id in gryttrDetailCache) return Promise.resolve(gryttrDetailCache[id]);
+  return fetch(GRYTTR_GQL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GRYTTR_TOKEN },
+    body: JSON.stringify({ query: GRYTTR_IMG_QUERY, variables: { id: [id] } })
+  }).then(r => r.json()).then(j => {
+    const e = j && j.data && j.data.entries && j.data.entries[0];
+    const d = { url: (e && e.image && e.image[0] && e.image[0].url) || null,
+                desc: htmlToText(e && e.description), vdesc: htmlToText(e && e.variantDescription),
+                vgrade: (e && e.variantGrade && e.variantGrade[0] && e.variantGrade[0].title) || null,
+                grade: (e && e.grade && e.grade[0] && e.grade[0].title) || null };
+    gryttrDetailCache[id] = d;   // hits and "no image / no text" are cached; network errors are not, so a later tap retries
+    return d;
+  });
+}
+
+map.on('popupopen', (e) => {
+  const popup = e.popup;
+  const b = popup._source && popup._source._b;
+  const el = popup.getElement();
+  const slot = el && el.querySelector('.popup-img');
+  if (!b || !slot) return;
+  // No image: drop the slot and let Leaflet re-measure the popup (private but stable 1.9.x helpers), so the
+  // popup shrinks back to text width instead of keeping a 260 px hole.
+  const remove = () => {
+    if (!slot.isConnected) return;
+    slot.remove();
+    if (popup._updateLayout && popup._updatePosition) { popup._updateLayout(); popup._updatePosition(); }
+  };
+  fetchGryttrDetails(b.id).then(d => {
+    // Caption first (it arrives with the url, before the photo bytes): description, then the variant's
+    // description labelled with the variant grade. Popup grows upward, so re-run the placement afterwards.
+    const cap = el.querySelector('.popup-caption');
+    // Live grades (the map data can be a few weeks old): correct the title if the grade changed, and label each
+    // description line with its grade like gryttr.com does: "4: Staa." then "6C: Sittstart ...".
+    const g1 = d.grade || ((b.g1 && b.g1 !== 'P') ? b.g1 : null);
+    const g2 = d.vgrade || b.g2 || null;
+    const titleEl = el.querySelector('.popup-title');
+    if (titleEl && g1 && titleEl.textContent !== b.n + ', ' + g1) titleEl.textContent = b.n + ', ' + g1;
+    const label = (g) => { const lab = document.createElement('b'); lab.textContent = (g || 'Variant') + ': '; return lab; };
+    if (cap && cap.isConnected && (d.desc || d.vdesc)) {
+      if (d.desc) { if (g1) cap.append(label(g1)); cap.append(d.desc); }
+      if (d.vdesc) {
+        if (d.desc) cap.append('\n');
+        cap.append(label(g2), d.vdesc);
+      }
+      cap.hidden = false;
+      if (popup._updateLayout && popup._updatePosition) { popup._updateLayout(); popup._updatePosition(); }
+      placePopup(popup);
+    } else if (cap) {
+      cap.remove();
+    }
+    const url = d.url;
+    if (!url || !slot.isConnected) { remove(); return; }
+    const img = new Image();
+    img.alt = b.n;
+    img.onload = () => {
+      if (!slot.isConnected) return;
+      const a = document.createElement('a');
+      a.href = b.u; a.target = '_blank'; a.rel = 'noopener';
+      a.appendChild(img);
+      slot.appendChild(a);
+      slot.classList.add('loaded');
+    };
+    img.onerror = remove;
+    img.src = url;
+  }).catch(remove);
+});
+
+// --- Popup placement: popup on top, boulder in the lower part of the screen ---------------------
+// Leaflet's autoPan only nudges a popup back inside the viewport, so a boulder near the screen edge
+// left its popup half off-screen with the tapped dot hidden under it. Instead, whenever a popup opens
+// the map slides so the boulder sits horizontally centred at POPUP_MARKER_Y of the map height (or
+// lower when the popup needs the room), leaving the bottom ~38% for the dot, your own position and the
+// background map. Search results and #b= deep links go through openBoulderPopup(), which first moves to
+// the boulder (zoom >= 17) and opens the popup once the view has settled, so the same slide applies.
+const POPUP_MARKER_Y = 0.66;   // fraction of the map height where the tapped boulder ends up (popup bottom ~60%)
+
+function placePopup(popup) {
+  const src = popup._source;
+  if (!src || !src.getLatLng || !popup._container || !map._loaded) return;
+  const size = map.getSize();
+  const cs = getComputedStyle(popup._container);
+  const gap = (parseInt(cs.marginBottom, 10) || 0) - L.point(popup.options.offset || [0, 0]).y;   // box bottom -> dot
+  // Taller than the screen allows (landscape phones): let the content scroll instead of cutting off the top.
+  const avail = size.y - 20 - 8 - gap;
+  if (popup._contentNode && popup._container.offsetHeight > avail) {
+    const chrome = popup._container.offsetHeight - popup._contentNode.offsetHeight;   // wrapper padding + margins
+    popup._contentNode.style.maxHeight = Math.max(120, avail - chrome) + 'px';
+    popup._contentNode.style.overflowY = 'auto';
+  }
+  const popupH = popup._container.offsetHeight + gap;
+  const targetY = Math.min(Math.max(size.y * POPUP_MARKER_Y, popupH + 8), size.y - 20);
+  const p = map.latLngToContainerPoint(src.getLatLng());
+  const dx = Math.round(p.x - size.x / 2), dy = Math.round(p.y - targetY);
+  if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+  map.panBy([dx, dy], { animate: true, duration: 0.3 });
+}
+map.on('popupopen', (e) => placePopup(e.popup));
+
+function openBoulderPopup(m) {
+  const z = Math.max(map.getZoom(), 17);
+  if (map.getZoom() === z && map.getBounds().contains(m.getLatLng())) { m.openPopup(); return; }
+  map.once('moveend', () => m.openPopup());
+  map.setView(m.getLatLng(), z);
 }
 
 const sel = {
@@ -722,8 +887,7 @@ resultsDiv.addEventListener('click', (ev) => {
   const idx = parseInt(item.dataset.idx, 10);
   if (isNaN(idx)) return;
   const m = markers[idx];
-  map.setView(m.getLatLng(), Math.max(map.getZoom(), 17));
-  m.openPopup();
+  openBoulderPopup(m);
   q.blur();
 });
 
@@ -879,8 +1043,7 @@ if (_startup.boulder) {
   if (_sm) {
     setCountry(_sm._b.co || 'Norge');
     refresh();
-    map.setView(_sm.getLatLng(), Math.max(map.getZoom(), 17));
-    _sm.openPopup();
+    openBoulderPopup(_sm);
   }
 }
 
