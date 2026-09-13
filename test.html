@@ -96,6 +96,15 @@
   .popup-img a, .popup-img img { display: block; width: 100%; height: 100%; }
   .popup-img img { object-fit: cover; }
   .leaflet-popup-content { font: 13px/1.4 system-ui, sans-serif; }
+  /* Popup tip: a long thin line instead of Leaflet's 17 px triangle, so the tapped dot and the map stay
+     visible below the popup while it is still obvious which boulder it belongs to. The box sits
+     margin-bottom (40) - popup offset (7) = 33 px above the dot; the 28 px line ends at the dot's edge.
+     placePopup() reads the margin/offset, so changing these numbers needs no JS change. */
+  .leaflet-popup { margin-bottom: 40px; }
+  .leaflet-popup-tip-container { width: 4px; height: 28px; margin-left: -2px; margin-top: -1px; overflow: visible; }
+  .leaflet-popup-tip { width: 2px; height: 28px; margin: 0 1px; padding: 0; transform: none; border-radius: 1px;
+                       background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+  @media (max-height: 520px) { .popup-img { width: 130px; height: 130px; } }   /* landscape phones */
   .marker-hidden { display: none; }
   .leaflet-control-layers { background: #fff !important; border: 1px solid rgba(0,0,0,.2); }
   .leaflet-control-layers-toggle {
@@ -360,7 +369,7 @@ for (const b of BOULDERS) {
       weight: 0.75
     });
   }
-  m.bindPopup(popupHtml, { maxWidth: 300 });   // content built on open, see popupHtml()
+  m.bindPopup(popupHtml, { maxWidth: 300, autoPan: false });   // content: popupHtml(); placement: placePopup()
   m._bands = bands;
   m._name = b.n.toLowerCase();
   m._b = b;
@@ -444,6 +453,37 @@ map.on('popupopen', (e) => {
     img.src = url;
   }).catch(remove);
 });
+
+// --- Popup placement: popup on top, boulder in the lower part of the screen ---------------------
+// Leaflet's autoPan only nudges a popup back inside the viewport, so a boulder near the screen edge
+// left its popup half off-screen with the tapped dot hidden under it. Instead, whenever a popup opens
+// the map slides so the boulder sits horizontally centred at POPUP_MARKER_Y of the map height (or
+// lower when the popup needs the room), leaving the bottom ~38% for the dot, your own position and the
+// background map. Search results and #b= deep links go through openBoulderPopup(), which first moves to
+// the boulder (zoom >= 17) and opens the popup once the view has settled, so the same slide applies.
+const POPUP_MARKER_Y = 0.62;   // fraction of the map height where the tapped boulder ends up
+
+function placePopup(popup) {
+  const src = popup._source;
+  if (!src || !src.getLatLng || !popup._container || !map._loaded) return;
+  const size = map.getSize();
+  const cs = getComputedStyle(popup._container);
+  const gap = (parseInt(cs.marginBottom, 10) || 0) - L.point(popup.options.offset || [0, 0]).y;   // box bottom -> dot
+  const popupH = popup._container.offsetHeight + gap;
+  const targetY = Math.min(Math.max(size.y * POPUP_MARKER_Y, popupH + 8), size.y - 20);
+  const p = map.latLngToContainerPoint(src.getLatLng());
+  const dx = Math.round(p.x - size.x / 2), dy = Math.round(p.y - targetY);
+  if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+  map.panBy([dx, dy], { animate: true, duration: 0.3 });
+}
+map.on('popupopen', (e) => placePopup(e.popup));
+
+function openBoulderPopup(m) {
+  const z = Math.max(map.getZoom(), 17);
+  if (map.getZoom() === z && map.getBounds().contains(m.getLatLng())) { m.openPopup(); return; }
+  map.once('moveend', () => m.openPopup());
+  map.setView(m.getLatLng(), z);
+}
 
 const sel = {
   band: { b1:true, b2:true, b3:true, b4:true, b5:true, b6:true, unknown:true },
@@ -725,7 +765,7 @@ ctrl.onAdd = () => {
     }
     bodyHtml += '</details>';
   }
-  bodyHtml += '<div class="total">Total: ' + BOULDERS.length + ' boulders &middot; <b>TEST</b>: boulder photo in popup</div>';
+  bodyHtml += '<div class="total">Total: ' + BOULDERS.length + ' boulders &middot; <b>TEST</b>: photo + popup placement</div>';
   d.innerHTML =
     '<div class="panel-header">' +
       '<button class="panel-toggle" type="button" title="Toggle filters" aria-label="Toggle filters" aria-expanded="true">' + closeIconSvg + '</button>' +
@@ -792,8 +832,7 @@ resultsDiv.addEventListener('click', (ev) => {
   const idx = parseInt(item.dataset.idx, 10);
   if (isNaN(idx)) return;
   const m = markers[idx];
-  map.setView(m.getLatLng(), Math.max(map.getZoom(), 17));
-  m.openPopup();
+  openBoulderPopup(m);
   q.blur();
 });
 
@@ -949,8 +988,7 @@ if (_startup.boulder) {
   if (_sm) {
     setCountry(_sm._b.co || 'Norge');
     refresh();
-    map.setView(_sm.getLatLng(), Math.max(map.getZoom(), 17));
-    _sm.openPopup();
+    openBoulderPopup(_sm);
   }
 }
 
