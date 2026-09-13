@@ -396,10 +396,11 @@ for (const b of BOULDERS) {
 function popupHtml(layer) {
   const b = layer._b;
   const isGryttr = REGION_SOURCE[b.r] !== 'Buldreinfo';
-  return '<b class="popup-title">' + escapeHtml(b.n) + '</b>' +
+  // Title "Name, grade" as on gryttr.com. The former Grade1/Grade2 lines are gone: the primary grade sits in
+  // the title and both grades label their description lines in the caption. 'P' = ungraded -> no suffix.
+  const g1 = (b.g1 && b.g1 !== 'P') ? b.g1 : null;
+  return '<b class="popup-title">' + escapeHtml(b.n + (g1 ? ', ' + g1 : '')) + '</b>' +
     (isGryttr ? '<div class="popup-img"></div><div class="popup-caption" hidden></div>' : '') +
-    (b.g1 ? 'Grade1: ' + escapeHtml(b.g1) + '<br>' : '') +
-    (b.g2 ? 'Grade2: ' + escapeHtml(b.g2) + '<br>' : '') +
     (b.c ? 'Crag: ' + escapeHtml(b.c) + '<br>' : '') +
     (b.ap ? '<i>omtrentlig plassering (' + escapeHtml(b.ap) + ')</i><br>' : '') +
     (b.fa ? 'FA: ' + escapeHtml(b.fa) + '<br>' : '') +
@@ -418,7 +419,7 @@ function popupHtml(layer) {
 // -> the slot is removed and the popup looks exactly as before. ~2% of Gryttr boulders have no image.
 const GRYTTR_GQL = 'https://api.gryttr.com/gql';
 const GRYTTR_TOKEN = '1WoYXrx-6yuzzlZ2ZTRyqLTTlcdO2N69';
-const GRYTTR_IMG_QUERY = 'query($id:[QueryArgument]){ entries(section:"boulder", id:$id){ ... on boulder_Entry { description variantDescription variantGrade { title } image { url @transform(width: 640, height: 640, mode: "crop") } } } }';
+const GRYTTR_IMG_QUERY = 'query($id:[QueryArgument]){ entries(section:"boulder", id:$id){ ... on boulder_Entry { description variantDescription grade { title } variantGrade { title } image { url @transform(width: 640, height: 640, mode: "crop") } } } }';
 const gryttrDetailCache = {};   // boulder id -> { url: signed url | null, desc: text, vdesc: text }
 
 // Gryttr descriptions are small HTML fragments ("<p>Sittstart. ...</p>"); flatten to plain text, one line
@@ -441,7 +442,8 @@ function fetchGryttrDetails(id) {
     const e = j && j.data && j.data.entries && j.data.entries[0];
     const d = { url: (e && e.image && e.image[0] && e.image[0].url) || null,
                 desc: htmlToText(e && e.description), vdesc: htmlToText(e && e.variantDescription),
-                vgrade: (e && e.variantGrade && e.variantGrade[0] && e.variantGrade[0].title) || null };
+                vgrade: (e && e.variantGrade && e.variantGrade[0] && e.variantGrade[0].title) || null,
+                grade: (e && e.grade && e.grade[0] && e.grade[0].title) || null };
     gryttrDetailCache[id] = d;   // hits and "no image / no text" are cached; network errors are not, so a later tap retries
     return d;
   });
@@ -464,12 +466,18 @@ map.on('popupopen', (e) => {
     // Caption first (it arrives with the url, before the photo bytes): description, then the variant's
     // description labelled with the variant grade. Popup grows upward, so re-run the placement afterwards.
     const cap = el.querySelector('.popup-caption');
+    // Live grades (the map data can be a few weeks old): correct the title if the grade changed, and label each
+    // description line with its grade like gryttr.com does: "4: Staa." then "6C: Sittstart ...".
+    const g1 = d.grade || ((b.g1 && b.g1 !== 'P') ? b.g1 : null);
+    const g2 = d.vgrade || b.g2 || null;
+    const titleEl = el.querySelector('.popup-title');
+    if (titleEl && g1 && titleEl.textContent !== b.n + ', ' + g1) titleEl.textContent = b.n + ', ' + g1;
+    const label = (g) => { const lab = document.createElement('b'); lab.textContent = (g || 'Variant') + ': '; return lab; };
     if (cap && cap.isConnected && (d.desc || d.vdesc)) {
-      if (d.desc) cap.append(d.desc);
+      if (d.desc) { if (g1) cap.append(label(g1)); cap.append(d.desc); }
       if (d.vdesc) {
         if (d.desc) cap.append('\n');
-        const lab = document.createElement('b'); lab.textContent = (d.vgrade || b.g2 || 'Variant') + ': ';   // live grade, so it matches the live text
-        cap.append(lab, d.vdesc);
+        cap.append(label(g2), d.vdesc);
       }
       cap.hidden = false;
       if (popup._updateLayout && popup._updatePosition) { popup._updateLayout(); popup._updatePosition(); }
