@@ -98,6 +98,14 @@
   .popup-img.loaded::after { content: none; }
   .popup-img a, .popup-img img { display: block; width: 100%; height: 100%; }
   .popup-img img { object-fit: cover; }
+  /* Title indented 14 px: the popup's top-left corner sits under the map's zoom buttons (they end at x=42,
+     the text would start at x=41), so the first letters were hidden. */
+  .popup-title { display: block; padding-left: 14px; }
+  /* Gryttr's boulder description ("Sittstart. ...") under the photo - the rules of the problem. Plain text
+     (HTML from the API is flattened), paragraphs kept via pre-line. */
+  .popup-caption { margin: 0 0 8px; padding: 6px 8px; background: #f2f4f5; border-radius: 4px;
+                   white-space: pre-line; line-height: 1.35; }
+  .popup-caption b { display: inline; }
   .leaflet-popup-content { font: 13px/1.4 system-ui, sans-serif; }
   /* Popup tip: a long thin line instead of Leaflet's 17 px triangle, so the tapped dot and the map stay
      visible below the popup while it is still obvious which boulder it belongs to. The box sits
@@ -388,8 +396,8 @@ for (const b of BOULDERS) {
 function popupHtml(layer) {
   const b = layer._b;
   const isGryttr = REGION_SOURCE[b.r] !== 'Buldreinfo';
-  return '<b>' + escapeHtml(b.n) + '</b><br>' +
-    (isGryttr ? '<div class="popup-img"></div>' : '') +
+  return '<b class="popup-title">' + escapeHtml(b.n) + '</b>' +
+    (isGryttr ? '<div class="popup-img"></div><div class="popup-caption" hidden></div>' : '') +
     (b.g1 ? 'Grade1: ' + escapeHtml(b.g1) + '<br>' : '') +
     (b.g2 ? 'Grade2: ' + escapeHtml(b.g2) + '<br>' : '') +
     (b.c ? 'Crag: ' + escapeHtml(b.c) + '<br>' : '') +
@@ -410,20 +418,32 @@ function popupHtml(layer) {
 // -> the slot is removed and the popup looks exactly as before. ~2% of Gryttr boulders have no image.
 const GRYTTR_GQL = 'https://api.gryttr.com/gql';
 const GRYTTR_TOKEN = '1WoYXrx-6yuzzlZ2ZTRyqLTTlcdO2N69';
-const GRYTTR_IMG_QUERY = 'query($id:[QueryArgument]){ entries(section:"boulder", id:$id){ ... on boulder_Entry { image { url @transform(width: 640, height: 640, mode: "crop") } } } }';
-const gryttrImgCache = {};   // boulder id -> signed url, or null when the boulder has no image
+const GRYTTR_IMG_QUERY = 'query($id:[QueryArgument]){ entries(section:"boulder", id:$id){ ... on boulder_Entry { description variantDescription variantGrade { title } image { url @transform(width: 640, height: 640, mode: "crop") } } } }';
+const gryttrDetailCache = {};   // boulder id -> { url: signed url | null, desc: text, vdesc: text }
 
-function fetchGryttrImageUrl(id) {
-  if (id in gryttrImgCache) return Promise.resolve(gryttrImgCache[id]);
+// Gryttr descriptions are small HTML fragments ("<p>Sittstart. ...</p>"); flatten to plain text, one line
+// per paragraph, so nothing from the API is ever inserted as markup.
+function htmlToText(html) {
+  if (!html) return '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.body.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+  doc.body.querySelectorAll('p, div, li').forEach(el => el.append('\n'));
+  return doc.body.textContent.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function fetchGryttrDetails(id) {
+  if (id in gryttrDetailCache) return Promise.resolve(gryttrDetailCache[id]);
   return fetch(GRYTTR_GQL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GRYTTR_TOKEN },
     body: JSON.stringify({ query: GRYTTR_IMG_QUERY, variables: { id: [id] } })
   }).then(r => r.json()).then(j => {
     const e = j && j.data && j.data.entries && j.data.entries[0];
-    const url = (e && e.image && e.image[0] && e.image[0].url) || null;
-    gryttrImgCache[id] = url;   // hits and "no image" are cached; network errors are not, so a later tap retries
-    return url;
+    const d = { url: (e && e.image && e.image[0] && e.image[0].url) || null,
+                desc: htmlToText(e && e.description), vdesc: htmlToText(e && e.variantDescription),
+                vgrade: (e && e.variantGrade && e.variantGrade[0] && e.variantGrade[0].title) || null };
+    gryttrDetailCache[id] = d;   // hits and "no image / no text" are cached; network errors are not, so a later tap retries
+    return d;
   });
 }
 
@@ -440,7 +460,24 @@ map.on('popupopen', (e) => {
     slot.remove();
     if (popup._updateLayout && popup._updatePosition) { popup._updateLayout(); popup._updatePosition(); }
   };
-  fetchGryttrImageUrl(b.id).then(url => {
+  fetchGryttrDetails(b.id).then(d => {
+    // Caption first (it arrives with the url, before the photo bytes): description, then the variant's
+    // description labelled with the variant grade. Popup grows upward, so re-run the placement afterwards.
+    const cap = el.querySelector('.popup-caption');
+    if (cap && cap.isConnected && (d.desc || d.vdesc)) {
+      if (d.desc) cap.append(d.desc);
+      if (d.vdesc) {
+        if (d.desc) cap.append('\n');
+        const lab = document.createElement('b'); lab.textContent = (d.vgrade || b.g2 || 'Variant') + ': ';   // live grade, so it matches the live text
+        cap.append(lab, d.vdesc);
+      }
+      cap.hidden = false;
+      if (popup._updateLayout && popup._updatePosition) { popup._updateLayout(); popup._updatePosition(); }
+      placePopup(popup);
+    } else if (cap) {
+      cap.remove();
+    }
+    const url = d.url;
     if (!url || !slot.isConnected) { remove(); return; }
     const img = new Image();
     img.alt = b.n;
@@ -472,6 +509,13 @@ function placePopup(popup) {
   const size = map.getSize();
   const cs = getComputedStyle(popup._container);
   const gap = (parseInt(cs.marginBottom, 10) || 0) - L.point(popup.options.offset || [0, 0]).y;   // box bottom -> dot
+  // Taller than the screen allows (landscape phones): let the content scroll instead of cutting off the top.
+  const avail = size.y - 20 - 8 - gap;
+  if (popup._contentNode && popup._container.offsetHeight > avail) {
+    const chrome = popup._container.offsetHeight - popup._contentNode.offsetHeight;   // wrapper padding + margins
+    popup._contentNode.style.maxHeight = Math.max(120, avail - chrome) + 'px';
+    popup._contentNode.style.overflowY = 'auto';
+  }
   const popupH = popup._container.offsetHeight + gap;
   const targetY = Math.min(Math.max(size.y * POPUP_MARKER_Y, popupH + 8), size.y - 20);
   const p = map.latLngToContainerPoint(src.getLatLng());
