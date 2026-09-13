@@ -87,9 +87,12 @@
     white-space: nowrap; pointer-events: none;
   }
   .leaflet-tooltip.grade-label::before { display: none; }
-  /* Boulder photo slot in Gryttr popups (fixed square so the popup does not jump when the image arrives) */
-  .popup-img { width: 260px; height: 260px; max-width: 100%; margin: 6px 0 8px; border-radius: 4px;
-               background: #eceff1; overflow: hidden; position: relative; }
+  /* Boulder photo slot in Gryttr popups. Square, sized up front so the popup never jumps when the image
+     arrives. Width follows the screen: popup = slot + 46 px (Leaflet's content margins 20+24 and 1+1 wrapper
+     padding), so 100vw - 86px leaves a 20 px gap on each side of a phone (iPhone 16: 307 px slot, 353 px
+     popup = 90% of 393). Capped at 320 px for tablets/desktop. bindPopup maxWidth (340) must stay >= the cap. */
+  .popup-img { width: min(320px, calc(100vw - 86px)); aspect-ratio: 1 / 1; height: auto; max-width: 100%;
+               margin: 6px 0 8px; border-radius: 4px; background: #eceff1; overflow: hidden; position: relative; }
   .popup-img::after { content: 'laster bilde...'; position: absolute; left: 0; right: 0; top: 50%;
                       transform: translateY(-50%); text-align: center; color: #9aa; font-size: 11px; }
   .popup-img.loaded::after { content: none; }
@@ -369,7 +372,7 @@ for (const b of BOULDERS) {
       weight: 0.75
     });
   }
-  m.bindPopup(popupHtml, { maxWidth: 300, autoPan: false });   // content: popupHtml(); placement: placePopup()
+  m.bindPopup(popupHtml, { maxWidth: 340, autoPan: false });   // content: popupHtml(); placement: placePopup()
   m._bands = bands;
   m._name = b.n.toLowerCase();
   m._b = b;
@@ -403,11 +406,11 @@ function popupHtml(layer) {
 // Gryttr's image CDN only serves SIGNED urls and every size needs its own signature, so embedding ~9k
 // image urls in the page would add ~0.4 MB to the download. Instead, when a Gryttr popup opens we ask
 // Gryttr's GraphQL API (the same public token gryttr.com's own site ships; CORS allows any origin) for a
-// 520x520 signed thumbnail of that one boulder and drop it into the slot. No image / API down / offline
+// 640x640 signed thumbnail of that one boulder and drop it into the slot. No image / API down / offline
 // -> the slot is removed and the popup looks exactly as before. ~2% of Gryttr boulders have no image.
 const GRYTTR_GQL = 'https://api.gryttr.com/gql';
 const GRYTTR_TOKEN = '1WoYXrx-6yuzzlZ2ZTRyqLTTlcdO2N69';
-const GRYTTR_IMG_QUERY = 'query($id:[QueryArgument]){ entries(section:"boulder", id:$id){ ... on boulder_Entry { image { url @transform(width: 520, height: 520, mode: "crop") } } } }';
+const GRYTTR_IMG_QUERY = 'query($id:[QueryArgument]){ entries(section:"boulder", id:$id){ ... on boulder_Entry { image { url @transform(width: 640, height: 640, mode: "crop") } } } }';
 const gryttrImgCache = {};   // boulder id -> signed url, or null when the boulder has no image
 
 function fetchGryttrImageUrl(id) {
@@ -461,7 +464,7 @@ map.on('popupopen', (e) => {
 // lower when the popup needs the room), leaving the bottom ~38% for the dot, your own position and the
 // background map. Search results and #b= deep links go through openBoulderPopup(), which first moves to
 // the boulder (zoom >= 17) and opens the popup once the view has settled, so the same slide applies.
-const POPUP_MARKER_Y = 0.62;   // fraction of the map height where the tapped boulder ends up
+const POPUP_MARKER_Y = 0.66;   // fraction of the map height where the tapped boulder ends up (popup bottom ~60%)
 
 function placePopup(popup) {
   const src = popup._source;
